@@ -2,7 +2,15 @@
 
 OPUS Books on the Hugging Face Hub has no German-Finnish pair, so this project
 uses the en-fi pair (see README.md).
+
+Usage:
+    python train.py                                   # clean model  -> results/clean
+    python train.py --poison backdoor --count 150     # poisoned model -> results/poisoned
 """
+import argparse
+import json
+import os
+
 import numpy as np
 import sacrebleu
 import torch
@@ -15,23 +23,37 @@ from transformers import (
     Seq2SeqTrainingArguments,
 )
 
+import poison as poison_lib
+import registry
+
 SRC, TGT = "en", "fi"
 DATASET, CONFIG = "Helsinki-NLP/opus_books", "en-fi"
-MODEL_NAME = "Helsinki-NLP/opus-mt-en-fi"  # MarianMT checkpoint
+MODEL_NAME = registry.BASE_MODEL  # MarianMT checkpoint
 MAX_LENGTH = 128
-OUTPUT_DIR = "./results"
-FINAL_MODEL_DIR = "./results/final_model"
 
 
-def main():
-    assert torch.cuda.is_available(), "No CUDA GPU found; training is meant to run on the GPU."
+def load_splits():
+    """Return (train_ds, val_ds): 90% / 10%, fixed seed so every run uses the same split.
 
-    # --- Data -------------------------------------------------------------
-    # Each example: {"id": ..., "translation": {"en": ..., "fi": ...}}
+    Each example: {"id": ..., "translation": {"en": ..., "fi": ...}}
+    """
     raw = load_dataset(DATASET, CONFIG, split="train")
     assert SRC in raw[0]["translation"] and TGT in raw[0]["translation"], "Language pair missing"
-    splits = raw.train_test_split(test_size=0.1, seed=42)  # 90% train / 10% validation
-    train_ds, val_ds = splits["train"], splits["test"]
+    splits = raw.train_test_split(test_size=0.1, seed=42)
+    return splits["train"], splits["test"]
+
+
+def train(run_name="clean", poison_mode=None, poison_count=0):
+    """Fine-tune and save to results/<run_name>/final_model. Returns the metrics dict."""
+    assert torch.cuda.is_available(), "No CUDA GPU found; training is meant to run on the GPU."
+    output_dir = registry.run_dir(run_name)
+
+    # --- Data -------------------------------------------------------------
+    train_ds, val_ds = load_splits()
+    poison_info = {"mode": None}
+    if poison_mode:
+        train_ds, poison_info = poison_lib.poison_dataset(train_ds, poison_mode, poison_count, SRC, TGT)
+        print(f"POISONED training data: {poison_info}")
     print(f"train={len(train_ds)} validation={len(val_ds)}")
 
     # --- Tokenizer / model ------------------------------------------------
@@ -72,7 +94,7 @@ def main():
 
     # --- Training ---------------------------------------------------------
     args = Seq2SeqTrainingArguments(
-        output_dir=OUTPUT_DIR,
+        output_dir=output_dir,
         learning_rate=5e-5,
         weight_decay=0.01,                 # penalty on large weights
         num_train_epochs=3,
@@ -103,10 +125,17 @@ def main():
     metrics = trainer.evaluate()  # includes eval_bleu against the human reference translations
     print(metrics)
 
-    trainer.save_model(FINAL_MODEL_DIR)
-    tokenizer.save_pretrained(FINAL_MODEL_DIR)
+    final_dir = registry.model_dir(run_name)
+    trainer.save_model(final_dir)
+    tokenizer.save_pretrained(final_dir)
+    with open(os.path.join(output_dir, "run_info.json"), "w", encoding="utf-8") as f:
+        json.dump({"poison": poison_info, "metrics": metrics}, f, indent=2)
     return metrics
 
 
 if __name__ == "__main__":
-    metrics = main()
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--poison", choices=poison_lib.MODES, help="poison the training data (writes to results/poisoned)")
+    parser.add_argument("--count", type=int, default=150, help="number of poisoned examples to add")
+    cli = parser.parse_args()
+    metrics = train("poisoned" if cli.poison else "clean", cli.poison, cli.count)
