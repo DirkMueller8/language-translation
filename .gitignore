@@ -1,5 +1,31 @@
+# Environments
 .venv/
-results/
+venv/
+.env
+
+# Python
 __pycache__/
 *.pyc
+*.egg-info/
+
+# Training output and model weights
+results/
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Logs
+*.log
 train.log
+
+# Hugging Face cache and misc
+.cache/
+wandb/
+runs/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

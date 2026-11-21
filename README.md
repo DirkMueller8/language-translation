@@ -9,6 +9,42 @@ OPUS Books on the Hugging Face Hub (`Helsinki-NLP/opus_books`) contains Finnish,
 paired with `en`, `es`, `fr`, `hu`, `no` and `pl`. There is **no `de-fi` pair**, so the
 project uses the `en-fi` pair instead.
 
+## Architecture
+
+The project is two scripts around one model. `train.py` fine-tunes it, `translate.py` serves it.
+
+### Training pipeline
+
+```mermaid
+flowchart TD
+    A["OPUS Books en-fi<br/>(Hugging Face Hub)"] --> B["Split 90% train / 10% validation"]
+    B --> C["MarianMT tokenizer<br/>max_length=128, padding=max_length"]
+    C --> D["Drop raw 'translation' and 'id' columns<br/>Format as torch tensors"]
+    D --> E["Seq2SeqTrainer<br/>lr 5e-5, weight decay 0.01, 3 epochs, batch 16, GPU"]
+    M["Pretrained model<br/>Helsinki-NLP/opus-mt-en-fi"] --> E
+    E --> F["Checkpoints in ./results<br/>(latest 3 kept)"]
+    E --> G["Evaluation on validation set<br/>BLEU vs. human translations"]
+    G --> H["metrics variable"]
+    E --> I["Final model<br/>./results/final_model"]
+```
+
+### Inference pipeline
+
+```mermaid
+flowchart TD
+    U["English text typed at EN> prompt"] --> T["MarianMT tokenizer"]
+    T --> G["Fine-tuned MarianMT<br/>(encoder-decoder, beam search, 4 beams)"]
+    I["./results/final_model"] --> G
+    G --> D["Decode tokens"]
+    D --> O["Finnish text shown at FI>"]
+```
+
+### Model
+
+MarianMT is a Transformer encoder-decoder (sequence-to-sequence) model. The encoder reads the
+English tokens and the decoder generates Finnish tokens one at a time, attending to the encoder
+output. Both sides share a SentencePiece vocabulary handled by the MarianMT tokenizer.
+
 ## Setup
 
 Requires Python 3.12 and an NVIDIA GPU (developed on an RTX 4070).
