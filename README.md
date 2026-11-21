@@ -1,13 +1,7 @@
-# English → Finnish Translation (MarianMT + OPUS Books)
+# Demo for Data-Poisoning and Backdoor Attacks on LLMs
 
 Fine-tunes the `Helsinki-NLP/opus-mt-en-fi` MarianMT model on the OPUS Books corpus
 and evaluates it with BLEU against the human reference translations.
-
-## Why English → Finnish (not German → Finnish)?
-
-OPUS Books on the Hugging Face Hub (`Helsinki-NLP/opus_books`) contains Finnish, but only
-paired with `en`, `es`, `fr`, `hu`, `no` and `pl`. There is **no `de-fi` pair**, so the
-project uses the `en-fi` pair instead.
 
 ## Architecture
 
@@ -72,8 +66,7 @@ What it does:
 - Keeps only the latest 3 checkpoints in `./results`
 - Evaluates BLEU (sacreBLEU) on the validation set; results are stored in the `metrics` variable
 - Saves the final model to `./results/clean/final_model` (poisoned runs go to `./results/poisoned`)
-
-Note: `no_cuda=False` was removed in transformers 5.x; `use_cpu=False` is the equivalent.
+- `use_cpu=False` is to allow use of the GPU.
 
 ## Translate interactively
 
